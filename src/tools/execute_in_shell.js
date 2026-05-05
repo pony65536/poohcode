@@ -1,5 +1,5 @@
 import { exec } from "node:child_process";
-import { resolveSafePath, validateCommand } from "../sandbox.js";
+import { resolveSafePath, validateCommand, cleanEnv } from "../sandbox.js";
 
 // Extract the base command (first word) from a shell command string.
 // e.g., "ls -la | grep foo" → "ls", "ENV=val cmd" → "cmd"
@@ -104,6 +104,7 @@ export async function execute(args) {
       timeout: safeTimeout,
       maxBuffer: 1024 * 1024, // 1MB
       windowsHide: true,
+      env: cleanEnv(),
     }, (error, stdout, stderr) => {
       let output = error
         ? `Exit code: ${error.code || 1}\n`

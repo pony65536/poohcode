@@ -73,6 +73,29 @@ const BLOCKED_PATTERNS = [
   /sudo\s+rm\s+-rf\s+\//, /dd\s+if=/, /mkfs/i, /fdisk/i,
 ];
 
+// ─── Environment cleanup ──────────────────────────────────────────────────────
+
+const SENSITIVE_ENV_KEYS = [
+  "DEEPSEEK_API_KEY",
+  "TAVILY_API_KEY",
+  "OPENAI_API_KEY",
+  "AZURE_OPENAI_KEY",
+  "ANTHROPIC_API_KEY",
+  "TELEGRAM_BOT_TOKEN",
+];
+
+/**
+ * Return a copy of process.env with sensitive keys stripped.
+ * Use this before spawning child processes to prevent API key leakage.
+ */
+export function cleanEnv() {
+  const env = { ...process.env };
+  for (const key of SENSITIVE_ENV_KEYS) {
+    delete env[key];
+  }
+  return env;
+}
+
 // ─── Path Sandbox ────────────────────────────────────────────────────────────
 
 /**
@@ -150,7 +173,7 @@ export function executeSandboxedCommand(command, args = [], options = {}) {
       timeout = 30000,        // 30 second default timeout
       maxBuffer = 1024 * 1024, // 1MB output limit
       cwd = DEFAULT_WORKSPACE,
-      env = { ...process.env },
+      env = cleanEnv(),
     } = options;
 
     // Validate command
@@ -159,13 +182,6 @@ export function executeSandboxedCommand(command, args = [], options = {}) {
     } catch (err) {
       return reject(err);
     }
-
-    // Clean environment: remove sensitive vars
-    delete env.DEEPSEEK_API_KEY;
-    delete env.TAVILY_API_KEY;
-    delete env.OPENAI_API_KEY;
-    delete env.AZURE_OPENAI_KEY;
-    delete env.ANTHROPIC_API_KEY;
 
     const child = execFile(command, args, {
       cwd: resolve(cwd),

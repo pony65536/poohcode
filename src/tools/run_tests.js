@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { resolveSafePath } from "../sandbox.js";
+import { resolveSafePath, cleanEnv } from "../sandbox.js";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -75,6 +75,7 @@ function runCommand(command, args, cwd, timeout) {
       timeout,
       maxBuffer: 1024 * 1024,
       windowsHide: true,
+      env: cleanEnv(),
     }, (error, stdout, stderr) => {
       let output = "";
       if (error) {

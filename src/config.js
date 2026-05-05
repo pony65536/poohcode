@@ -20,7 +20,7 @@ const DEFAULTS = {
   },
   agent: {
     maxIterations: 25,
-    confirmDestructive: true,
+    confirmDestructive: true, // false = auto-allow all destructive actions without prompting
   },
   llm: {
     model: null, // null = use env DEEPSEEK_MODEL or default

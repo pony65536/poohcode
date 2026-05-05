@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { resolveSafePath, executeSandboxedCommand, executeDockerCommand, SandboxError, validateCommand } from "../sandbox.js";
+import { resolveSafePath, executeSandboxedCommand, executeDockerCommand, SandboxError, validateCommand, cleanEnv } from "../sandbox.js";
 import { get } from "../config.js";
 
 export const definition = {
@@ -72,6 +72,7 @@ export async function execute(args) {
         stdio: "inherit",
         timeout: safeTimeout,
         windowsHide: true,
+        env: cleanEnv(),
       });
 
       child.on("close", (code) => {

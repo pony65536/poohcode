@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { resolveSafePath } from "../sandbox.js";
+import { resolveSafePath, cleanEnv } from "../sandbox.js";
 
 // Combined git tools: status, diff, log
 export const definition = {
@@ -40,6 +40,7 @@ function runGit(args, cwd) {
       timeout: 10000,
       maxBuffer: 500 * 1024,
       windowsHide: true,
+      env: cleanEnv(),
     }, (error, stdout, stderr) => {
       if (error) {
         resolve(`Git error: ${stderr || error.message}`);
