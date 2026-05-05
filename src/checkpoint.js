@@ -9,7 +9,7 @@ function ensureDir() {
 }
 
 function sanitize(name) {
-  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 120);
+  return name.replace(/[<>:"/\\|?*]/g, "_").slice(0, 120);
 }
 
 export function saveCheckpoint(messages, tag = "") {

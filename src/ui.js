@@ -6,7 +6,8 @@
  */
 import chalk from "chalk";
 import hljs from "highlight.js";
-import { createInterface } from "node:readline";
+import { createInterface, cursorTo, clearLine } from "node:readline";
+import { env } from "node:process";
 import { t, getLang, setLang, LANGUAGES, getCurrentLangName } from "./lang.js";
 
 // ─── Re-export chalk & lang helpers ──────────────────────────────────────────
@@ -65,6 +66,9 @@ export function formatUsageHint() {
 
 // ─── Syntax highlighting helpers ─────────────────────────────────────────────
 
+// Ensure chalk produces ANSI codes even when output is not a TTY (e.g. pipes)
+chalk.level = env.CI ? Math.max(chalk.level, 2) : Math.max(chalk.level, 1);
+
 const HLJS_TO_CHALK = {
   "hljs-keyword": chalk.magenta,
   "hljs-literal": chalk.yellow,
@@ -89,17 +93,20 @@ const HLJS_TO_CHALK = {
 function htmlToChalk(html) {
   let out = "";
   let i = 0;
+  let currentStyle = null; // track the active chalk style function
   while (i < html.length) {
     if (html[i] === "<") {
       const end = html.indexOf(">", i);
       const tag = html.slice(i, end + 1);
       if (tag.startsWith("</span")) {
         out += chalk.reset("");
+        currentStyle = null;
       } else {
         const m = tag.match(/class="([^"]*)"/);
         if (m) {
-          const fn = HLJS_TO_CHALK[m[1]] || HLJS_TO_CHALK[m[1].split(" ")[0]];
-          if (fn) out += fn("");
+          const cls = m[1];
+          const fn = HLJS_TO_CHALK[cls] || HLJS_TO_CHALK[cls.split(" ")[0]];
+          currentStyle = fn; // save style for the upcoming text
         }
       }
       i = end + 1;
@@ -111,7 +118,13 @@ function htmlToChalk(html) {
     } else {
       const next = html.indexOf("<", i);
       const end = next === -1 ? html.length : next;
-      out += html.slice(i, end);
+      const text = html.slice(i, end);
+      // apply current style to the text chunk
+      if (currentStyle) {
+        out += currentStyle(text);
+      } else {
+        out += text;
+      }
       i = end;
     }
   }
@@ -134,6 +147,7 @@ function highlightLine(line, lang) {
 let inCodeBlock = false;
 let codeBlockLang = "";
 let codeLineBuffer = "";
+let codeBlockLangBuffer = ""; // buffer for lang name when ``` and lang arrive in separate chunks
 let inBold = false;
 
 /**
@@ -162,6 +176,7 @@ export function highlightStream(text) {
       if (!inCodeBlock) {
         inCodeBlock = true;
         codeBlockLang = text.slice(i + 3, nl === -1 ? text.length : nl).trim();
+        codeBlockLangBuffer = "";
         codeLineBuffer = "";
       } else {
         // Flush the last buffered line
@@ -169,6 +184,7 @@ export function highlightStream(text) {
         codeLineBuffer = "";
         inCodeBlock = false;
         codeBlockLang = "";
+        codeBlockLangBuffer = "";
       }
       i = nl !== -1 ? nl : text.length;
       continue;
@@ -177,6 +193,18 @@ export function highlightStream(text) {
     // ── Inside code block: line-by-line syntax highlighting ──────────
     if (inCodeBlock) {
       if (text[i] === "\n") {
+        // If we entered code block but lang was empty (``` arrived without lang),
+        // the first line might be the language name — capture it
+        if (!codeBlockLang && codeBlockLangBuffer === "" && codeLineBuffer.trim()) {
+          // Check if this line looks like a language identifier
+          const possibleLang = codeLineBuffer.trim().toLowerCase();
+          if (hljs.getLanguage(possibleLang)) {
+            codeBlockLang = possibleLang;
+            codeLineBuffer = "";
+            continue;
+          }
+        }
+
         result += highlightLine(codeLineBuffer, codeBlockLang) + "\n";
         codeLineBuffer = "";
       } else {
@@ -380,6 +408,7 @@ export function resetCodeBlockState() {
   inCodeBlock = false;
   codeBlockLang = "";
   codeLineBuffer = "";
+  codeBlockLangBuffer = "";
   inBold = false;
   _inItalic = false;
   _inStrikethrough = false;
@@ -550,6 +579,8 @@ export async function showConfirmSelector(rl) {
     function cleanup() {
       rl.input.removeListener("keypress", onKeyPress);
       try { rl.input.setRawMode(false); } catch { /* ignore */ }
+      // Don't call resume/pause — readline manages its own flow.
+      // The line handler's rl.prompt() will re-display the prompt.
     }
 
     try { rl.input.setRawMode(true); } catch { /* ignore */ }
@@ -722,4 +753,45 @@ export function setNormalPrompt(rl) {
 
 export function formatMultiLineHint() {
   return chalk.dim(t("multiline.hint")) + "\n";
+}
+
+// ─── Pinned output: keeps input line at bottom ──────────────────────────────
+
+/**
+ * Create a write function that clears the input line before writing
+ * and redraws the prompt + in-progress input afterward.
+ * Use this for all non-streaming output to keep the input pinned.
+ */
+export function createPinnedWrite(rl) {
+  return function write(text) {
+    // Save current input state
+    const prompt = rl.getPrompt();
+    const line = rl.line;
+    const cursor = rl.cursor;
+
+    // Move to a clean new line (preserves streamed content on previous lines)
+    process.stdout.write("\n");
+    clearLine(process.stdout, 0);
+    cursorTo(process.stdout, 0);
+
+    // Write the output
+    process.stdout.write(text);
+    if (text && !text.endsWith("\n")) process.stdout.write("\n");
+
+    // Redraw input prompt + current buffer
+    process.stdout.write(prompt + line);
+    cursorTo(process.stdout, prompt.length + cursor);
+  };
+}
+
+/**
+ * Redraw the input line at cursor position. Call after raw streaming
+ * output to restore the input prompt to the bottom.
+ */
+export function redrawInput(rl) {
+  const prompt = rl.getPrompt();
+  const line = rl.line;
+  const cursor = rl.cursor;
+  process.stdout.write("\n" + prompt + line);
+  cursorTo(process.stdout, prompt.length + cursor);
 }

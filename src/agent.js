@@ -12,6 +12,9 @@ import { resolveSafePath } from "./sandbox.js";
 const MAX_ITERATIONS = get("agent.maxIterations", 25);
 const MAX_VERIFY_ITERATIONS = 2;
 
+// When false, all destructive actions are auto-allowed without prompting the user
+const CONFIRM_DESTRUCTIVE = get("agent.confirmDestructive", true);
+
 // Tools that modify state — require user confirmation before execution
 const DESTRUCTIVE_TOOLS = new Set([
   "write_file",
@@ -223,11 +226,14 @@ export async function runAgent(userMessage, conversationHistory = [], callbacks 
       }
 
       // ── Execute command tools (safe commands auto-run, others ask) ────
+      let cmdConfirmAlways = !CONFIRM_DESTRUCTIVE; // if confirm disabled, always allow
       for (const p of commandTools) {
         const cmd = (p.args.command || "").trim().split(/\s+/)[0];
         const isSafe = SAFE_COMMANDS.has(cmd);
 
-        if (!isSafe && onConfirm) {
+        if (cmdConfirmAlways) {
+          // Already allowed (either via config or previous allow_all)
+        } else if (!isSafe && onConfirm) {
           // Notify tool start
           if (onToolStartBatch) onToolStartBatch([{ name: p.fn.name, args: p.args }]);
 
@@ -237,13 +243,19 @@ export async function runAgent(userMessage, conversationHistory = [], callbacks 
             // proceed
           } else if (result === "allow_all") {
             // proceed, mark this session
-            confirmAlways = true;
+            cmdConfirmAlways = true;
           } else {
             const deniedMsg = "User denied this action. Do not retry the same operation. Suggest an alternative approach or ask the user what they'd prefer.";
             if (onToolEndBatch) onToolEndBatch([deniedMsg]);
             messages.push({ role: "tool", tool_call_id: p.toolCall.id, content: deniedMsg });
             continue;
           }
+        }
+
+        if (onToolStartBatch && !isSafe) {
+          // already notified start above for unsafe commands
+        } else if (onToolStartBatch) {
+          onToolStartBatch([{ name: p.fn.name, args: p.args }]);
         }
 
         let toolResult;
@@ -257,7 +269,7 @@ export async function runAgent(userMessage, conversationHistory = [], callbacks 
       }
 
       // ── Execute destructive tools sequentially (with confirmation) ────
-      let confirmAlways = false; // if user chose "always allow this session"
+      let confirmAlways = !CONFIRM_DESTRUCTIVE; // if confirm disabled, always allow
       for (const p of destructive) {
         // Auto-checkpoint before destructive action
         if (onCheckpoint) onCheckpoint(p.fn.name, p.args);
@@ -308,8 +320,9 @@ export async function runAgent(userMessage, conversationHistory = [], callbacks 
           const verifyResults = await runAutoVerify(projectInfo, sandboxInfo);
           if (verifyResults.length > 0) {
             verifyIterations++;
+            // Push as user message — avoids orphan tool message API error
             for (const r of verifyResults) {
-              messages.push({ role: "tool", tool_call_id: "verify", content: r });
+              messages.push({ role: "user", content: r });
             }
             continue;
           }

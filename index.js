@@ -35,6 +35,8 @@ import {
   setMultiLinePrompt,
   setNormalPrompt,
   formatMultiLineHint,
+  createPinnedWrite,
+  redrawInput,
 } from "./src/ui.js";
 
 // ─── Session persistence ────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ function loadSession() {
 // ─── CLI setup ──────────────────────────────────────────────────────────────
 
 const rl = createReadline();
+const write = createPinnedWrite(rl);
 
 let conversationHistory = [];
 
@@ -73,11 +76,11 @@ let conversationHistory = [];
 const saved = loadSession();
 if (saved && Array.isArray(saved) && saved.length > 0) {
   conversationHistory = saved;
-  process.stdout.write(formatSessionRestored(saved.length));
+  write(formatSessionRestored(saved.length));
 } else {
-  process.stdout.write(formatBanner());
+  write(formatBanner());
 }
-process.stdout.write(formatUsageHint());
+write(formatUsageHint());
 
 rl.prompt();
 
@@ -98,15 +101,15 @@ function looksLikeCodeBlock(line) {
 async function processInput(input) {
   if (input === "exit") {
     saveSession(conversationHistory);
-    process.stdout.write(formatExit(conversationHistory.length));
+    write(formatExit(conversationHistory.length));
     rl.close();
     return;
   }
 
-  if (input === "clear") {
+  if (input === "clear" || input === "/clear") {
     conversationHistory = [];
     saveSession([]);
-    process.stdout.write(formatCleared());
+    write(formatCleared());
     rl.prompt();
     return;
   }
@@ -114,7 +117,7 @@ async function processInput(input) {
   // ── /checkpoint: manually save a checkpoint ────────────────────────
   if (input.trim() === "/checkpoint") {
     const label = saveCheckpoint(conversationHistory, "manual");
-    process.stdout.write(chalk.green(`  ✓ Checkpoint saved: ${label}\n\n`));
+    write(chalk.green(`  ✓ Checkpoint saved: ${label}\n\n`));
     rl.prompt();
     return;
   }
@@ -125,9 +128,9 @@ async function processInput(input) {
     if (restored) {
       conversationHistory = restored;
       saveSession(conversationHistory);
-      process.stdout.write(chalk.yellow("  ↺ Restored to last checkpoint.\n\n"));
+      write(chalk.yellow("  ↺ Restored to last checkpoint.\n\n"));
     } else {
-      process.stdout.write(chalk.dim("  No checkpoints found.\n\n"));
+      write(chalk.dim("  No checkpoints found.\n\n"));
     }
     rl.prompt();
     return;
@@ -137,12 +140,12 @@ async function processInput(input) {
   if (input.trim() === "/checkpoints") {
     const cps = listCheckpoints();
     if (cps.length === 0) {
-      process.stdout.write(chalk.dim("  No checkpoints yet.\n\n"));
+      write(chalk.dim("  No checkpoints yet.\n\n"));
     } else {
       cps.forEach((cp, i) => {
-        process.stdout.write(`  ${chalk.cyan(i + 1)}. ${cp.name} (${cp.messages} msgs)\n`);
+        write(`  ${chalk.cyan(i + 1)}. ${cp.name} (${cp.messages} msgs)\n`);
       });
-      process.stdout.write("\n");
+      write("\n");
     }
     rl.prompt();
     return;
@@ -153,14 +156,14 @@ async function processInput(input) {
     const changed = await showLanguageSelector(rl);
     if (changed) {
       // Re-display banner and hint in the new language
-      process.stdout.write(formatBanner());
-      process.stdout.write(formatUsageHint());
+      write(formatBanner());
+      write(formatUsageHint());
     }
     rl.prompt();
     return;
   }
 
-  process.stdout.write("\n");
+  write("\n");
 
   try {
     let streamed = false;
@@ -178,7 +181,7 @@ async function processInput(input) {
         process.stdout.write(formatThinking(text));
       },
       async onConfirm(toolName, summary) {
-        process.stdout.write(formatConfirmPrompt(toolName, summary) + "\n");
+        process.stdout.write("\n" + formatConfirmPrompt(toolName, summary) + "\n");
         const result = await showConfirmSelector(rl);
         return result; // "allow" | "allow_all" | "deny"
       },
@@ -192,11 +195,11 @@ async function processInput(input) {
     saveSession(conversationHistory);
 
     if (!streamed) {
-      process.stdout.write(highlightStream(answer));
+      write(highlightStream(answer));
     }
-    process.stdout.write(formatThinkingEnd() + formatTurnSummary(getTurnSummary()));
+    write(formatThinkingEnd() + formatTurnSummary(getTurnSummary()));
   } catch (err) {
-    process.stdout.write(formatError(err.message));
+    write(formatError(err.message));
     saveSession(conversationHistory);
   }
 }
@@ -251,7 +254,7 @@ rl.on("line", async (line) => {
     isMultiLine = true;
     multiLineBuffer = [line];
     setMultiLinePrompt(rl);
-    process.stdout.write(formatMultiLineHint());
+    write(formatMultiLineHint());
     rl.prompt();
     return;
   }
@@ -273,11 +276,11 @@ async function gracefulShutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
-  process.stdout.write("\n\n" + formatShutdown(signal));
+  write("\n\n" + formatShutdown(signal));
   saveSession(conversationHistory);
 
   const stats = getSessionStats();
-  process.stdout.write(formatShutdownStats(stats, conversationHistory.length) + "\n");
+  write(formatShutdownStats(stats, conversationHistory.length) + "\n");
 
   rl.close();
   process.exit(0);
