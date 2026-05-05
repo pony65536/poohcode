@@ -1,5 +1,6 @@
 node_modules/
 .env
+deepseek.bat
 logs/
 .claude/
 .poohcode/
