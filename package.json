@@ -1,0 +1,30 @@
+{
+  "name": "poohcode",
+  "version": "0.1.0",
+  "description": "A coding agent CLI powered by DeepSeek",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "telegram": "node src/telegram.js",
+    "lint": "eslint .",
+    "pretest": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "chalk": "^5.6.2",
+    "dotenv": "^16.0.0",
+    "grammy": "^1.42.0",
+    "highlight.js": "^11.11.1",
+    "openai": "^4.0.0",
+    "tiktoken": "^1.0.22"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "eslint-plugin-import": "^2.32.0",
+    "globals": "^17.6.0",
+    "vitest": "^3.2.4"
+  }
+}
